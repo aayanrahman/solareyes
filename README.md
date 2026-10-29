@@ -22,7 +22,7 @@ This is a proof-of-concept maker build. It has no printed enclosure. The perfboa
 
 The solar panel feeds a CN3065 charger, which charges a 250 mAh LiPo. The charger's SYS output follows the cell voltage, about 3.0 V to 4.2 V. A CANADUINO buck/boost converter turns that into a steady 5 V. A switch sits between the converter and the SuperMini's 5 V pin. The SuperMini's 3.3 V pin powers the OLED, and the display talks to it over I2C on GPIO6 and GPIO7.
 
-The firmware is one Arduino sketch. It draws two rounded rectangles for eyes and moves them around with `millis()` timing.
+The firmware is one Arduino sketch, split into a few files. It draws two rounded rectangles for eyes and moves them around with `millis()` timing.
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ Also needed, from parts on hand: an ESP32-C3 SuperMini, a 3-pin mini slide switc
 | Multimeter | Polarity, the 5.0 V rail, and checking for shorts |
 | Flush cutters / hobby knife | Cutting the perfboard and header strips |
 | Wire stripper | Jumper leads |
-| Arduino IDE or PlatformIO | Uploading `solar_eyes_v0_1.ino` |
+| Arduino IDE or PlatformIO | Uploading `firmware/SolarEyes/` |
 
 ## Board Layout
 
@@ -262,7 +262,7 @@ flowchart TD
 
 ## Firmware
 
-`solar_eyes_v0_1.ino` is the whole firmware. U8g2 draws into a 128 x 64 framebuffer in RAM, and the sketch pushes that buffer to the SSD1306 itself over I2C at 100 kHz. This panel did not respond at the library's default 400 kHz.
+The firmware is the sketch folder `firmware/SolarEyes/`. Open `SolarEyes.ino` in the Arduino IDE; the other files in the folder open as tabs. U8g2 draws into a 128 x 64 framebuffer in RAM, and the sketch pushes that buffer to the SSD1306 itself over I2C at 100 kHz. This panel did not respond at the library's default 400 kHz.
 
 Arduino IDE settings for the SuperMini:
 
@@ -273,16 +273,13 @@ Arduino IDE settings for the SuperMini:
 | USB CDC On Boot | Enabled |
 | Library | U8g2 by oliver |
 
-```cpp
-#define SDA_PIN 6
-#define SCL_PIN 7
-#define OLED_ADDR 0x3C
+Pins, the OLED address, and the I2C clock are in `firmware/SolarEyes/config.h`:
 
-void oledInit() {
-  Wire.begin(SDA_PIN, SCL_PIN);
-  Wire.setClock(100000);
-  // ...SSD1306 init sequence, then display on
-}
+```cpp
+constexpr uint8_t PIN_SDA = 6;
+constexpr uint8_t PIN_SCL = 7;
+constexpr uint8_t OLED_ADDR = 0x3C;
+constexpr uint32_t I2C_HZ = 100000;
 ```
 
 Each eye is a filled rounded rectangle with no pupil. The eye looks around by changing shape. When the face turns to one side, the near eye gets a little bigger, the far eye a little smaller, and the two slide closer together. Arched eyebrows move with each eye, and the eyes bob slightly while idle. Every change eases in over a few frames instead of snapping.
@@ -301,7 +298,35 @@ flowchart LR
     P --> Z["Sleepy"]
 ```
 
-The loop redraws about every 33 ms and pauses briefly between frames so the USB connection stays alive. Wi-Fi and BLE are never started.
+The loop asks for a new frame every 33 ms and pauses briefly between frames so the USB connection stays alive. Sending a full frame at 100 kHz takes about 110 ms, so in practice the panel updates about 9 times a second. Set `DEBUG_FRAME_TIME` to `1` in `config.h` to print the measured time. Wi-Fi and BLE are never started.
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has diagrams of the whole keychain, the firmware files, one frame from start to finish, and the expression odds.
+
+### On the computer
+
+The expression logic in `firmware/SolarEyes/eyes.cpp` has no hardware code, so it can be tested on a laptop:
+
+```bash
+make test
+```
+
+`make firmware` builds the sketch with [arduino-cli](https://arduino.github.io/arduino-cli/) for the ESP32C3 Dev Module with USB CDC On Boot enabled. It needs the `esp32:esp32` core and the U8g2 library. PlatformIO works from the repo root too, and fetches U8g2 itself:
+
+```bash
+pio run -e supermini -t upload
+pio device monitor -b 115200
+```
+
+### Layout
+
+```text
+firmware/SolarEyes/  sketch: SolarEyes.ino, config.h, eyes, render, oled
+test/                expression and layout tests that run on a computer
+docs/ARCHITECTURE.md diagrams of the hardware and firmware
+images/              build photos
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) lists which file to edit for each kind of change.
 
 ## Notes and Limitations
 

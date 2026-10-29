@@ -7,3 +7,5 @@ Thumbs.db
 *.elf
 *.bin
 *.map
+build/
+test/test_eyes
